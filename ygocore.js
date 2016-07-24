@@ -1,4 +1,4 @@
-/*jslint node:true, plusplus:true */
+/*jslint node:true, plusplus:true, bitwise:true */
 
 'use strict';
 
@@ -186,23 +186,55 @@ function shuffle(a) {
 function seed() {
     return Math.floor(Math.random() * (4294967295));
 }
-console.log(ref.types.uint32);
+
+function mainProcess(game) {
+    //    char engineBuffer[0x1000];
+    //	unsigned int engFlag = 0, engLen = 0;
+    //	int stop = 0;
+    //	while (!stop) {
+    //		if (engFlag == 2)
+    //			break;
+    //		int result = process(pduel);
+    //		engLen = result & 0xffff;
+    //		engFlag = result >> 16;
+    //		if (engLen > 0) {
+    //			get_message(pduel, (byte*)&engineBuffer);
+    //			stop = Analyze(engineBuffer, engLen);
+    //		}
+    //	}
+    //	if(stop == 2)
+    //		DuelEndProc();
+
+    var engineBuffer,
+        engFlag = 0,
+        engLen = 0,
+        stop = 0,
+        result;
+    while (!stop) {
+        if (engFlag === 2) {
+            break;
+        }
+        result = process(game.pduel);
+        engLen = result & 0xffff;
+        engFlag = result >> 16;
+        if (engLen > 0) {
+            //game.get_message(game.pduel, (byte * ) & engineBuffer);
+        }
+        stop = Analyze(engineBuffer, engLen);
+    }
+    if (stop === 2) {
+        duelEndProcedure();
+    }
+}
 
 function duel(settings, players) {
     /*
     1.) who is going first?
-    xx2.) if shuffle, shuffle decks
+
     3.) set time limit
-    xx4.) set_script_reader
-    xx5.) set_card_reader
-    xx6.) set_message_handler
-    xx7.) create_duel(Random_Number)
-    xx8.) set_player_info(pduel, 0, start_lp, start_hand_count, draw_count);
-    xx9.) set_player_info(pduel, 1, start_lp, start_hand_count, draw_count);
-    xx10.) a.) new_card(pduel, pdeck[0].main[i]->first, 0, 0, LOCATION_DECK, 0, POS_FACEDOWN_DEFENSE);
-         b.) POS_FACEDOWN_DEFENSE is default
+
     11.) send start message over message with LP and sizes (fuck that do it in JSON)
-    xx12.) start_duel(pduel, opt) where opt is if using goat age rules.
+
     13.) "Process();"
     */
     var pduel,

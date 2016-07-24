@@ -13,6 +13,27 @@ var sqlite3 = require('sqlite3').verbose(),
     struct = require('ref-struct');
 
 
+var bytePointer = ref.refType(ref.types.byte),
+    charPointer = ref.refType(ref.types.char),
+    intPointer = ref.refType(ref.types.int),
+    uint32Pointer = ref.refType(ref.types.uint32),
+    voidPointer = ref.refType(ref.types['void']),
+    cardData = struct({
+        code: ref.types.uint32,
+        alias: ref.types.uint32,
+        setcode: ref.types.uint64,
+        type: ref.types.uint32,
+        level: ref.types.uint32,
+        attribute: ref.types.uint32,
+        race: ref.types.uint32,
+        attack: ref.types.int32,
+        defense: ref.types.int32,
+        lscale: ref.types.uint32,
+        rscale: ref.types.uint32
+    }),
+    cardDataPointer = ref.refType(cardData);
+
+
 function constructDatabase(targetDB, targetFolder) {
     // create instance of card database in memory 2MB, prevents sychronous read request and server lag.
     var database,
@@ -80,10 +101,14 @@ function constructScripts(targetFolder) {
         filelist = list;
     });
 
-    return function (id) {
+    return function (id, length) {
+
+        console.log('SCRIPT ID REQUEST:', id.toString('utf-8'), 'Length:', length);
+        return new Buffer([0]);
         //function used by the core to process scripts
-        var filename = 'c' + id,
+        var filename = 'c' + id.toString('utf-8'),
             output = new Buffer(scripts[filename]);
+        console.log('OUTPUT:', output);
         return output;
     };
 }
@@ -95,42 +120,59 @@ module.exports.configurations = {
     }
 };
 
+function messagHandler(input) {
+    console.log('NEW MESSAGE', input);
+}
+
+function duel(instance, players) {
+    /*
+    1.) who is going first?
+    2.) if shuffle, shuffle decks
+    3.) set time limit
+    4.) set_script_reader
+    5.) set_card_reader
+    6.) set_message_handler
+    7.) create_duel(Random_Number)
+    8.) set_player_info(pduel, 0, start_lp, start_hand_count, draw_count);
+    9.) set_player_info(pduel, 1, start_lp, start_hand_count, draw_count);
+    
+
+    */
+}
 
 module.exports.core = function (settings) {
     // create new instance of flourohydride/ygopro/ocgcore
 
-    var bytePointer = ref.types.byte,
-        charPointer = ref.types.char,
-        intPointer = ref.types.int,
-        uint32Pointer = ref.types.uint32,
-        voidPointer = ref.types.void,
-        cardDataPointer;
-
-    var script_reader = ffi.Function(bytePointer, [charPointer, intPointer]),
-        card_reader = ffi.Function('uint32', [cardDataPointer]),
-        message_handler = ffi.Function('uint32', [voidPointer, 'uint32']);
-
-    this.ocgapi = ffi.Library(__dirname + '/ocgcorex64.dll', {
-        'set_script_reader': ['void', [script_reader]],
-        'set_card_reader': ['void', [card_reader]],
-        'set_message_handler': ['void', message_handler],
-        'create_duel': ['pointer', ['uint32']],
-        'start_duel': ['void', ['pointer', 'int']],
-        'end_duel': ['void', ['pointer']],
-        'set_player_info': ['void', ['pointer', 'int32', 'int32', 'int32', 'int32']],
-        'get_log_message': ['void', ['pointer', bytePointer]],
-        //'get_message': ['int32', ['pointer', 'byte*']],
-        'process': ['int32', ['pointer']],
-        'new_card': ['void', ['pointer', 'uint32', 'uint8', 'uint8', 'uint8', 'uint8', 'uint8']],
-        'new_tag_card': ['void', ['pointer', 'uint32', 'uint8', 'uint8']],
-        'query_card': ['int32', ['pointer', 'uint8', 'uint8', 'int32', bytePointer, 'int32']],
-        'query_field_count': ['int32', ['pointer', 'uint8', 'uint8']],
-        'query_field_card': ['int32', ['pointer', 'uint8', 'uint8', 'int32', bytePointer, 'int32']],
-        'query_field_info': ['int32', ['pointer', bytePointer]],
-        'set_responsei': ['void', ['pointer', 'int32']],
-        'set_responseb': ['void', ['pointer', bytePointer]],
-        'preload_script': ['int32', ['pointer', charPointer, 'int32']]
-    });
+    var pduelPointer = 'pointer', ///really need to figure out the dimensions of this pointer. "pointer" isnt gonna cut it.
+        script_reader = ffi.Callback(bytePointer, [charPointer, intPointer], settings.script_reader),
+        card_reader = ffi.Callback('uint32', [cardDataPointer], settings.card_reader),
+        message_handler = ffi.Callback('uint32', [voidPointer, 'uint32'], messagHandler),
+        ocgapi = ffi.Library(__dirname + '/ocgcorex64.dll', {
+            'set_script_reader': ['void', [bytePointer]],
+            'set_card_reader': ['void', ['uint32']],
+            'set_message_handler': ['void', ['uint32']],
+            'create_duel': [pduelPointer, ['uint32']],
+            'start_duel': ['void', [pduelPointer, 'int']],
+            'end_duel': ['void', [pduelPointer]],
+            'set_player_info': ['void', [pduelPointer, 'int32', 'int32', 'int32', 'int32']],
+            'get_log_message': ['void', [pduelPointer, bytePointer]],
+            'get_message': ['int32', [pduelPointer, bytePointer]],
+            'process': ['int32', [pduelPointer]],
+            'new_card': ['void', [pduelPointer, 'uint32', 'uint8', 'uint8', 'uint8', 'uint8', 'uint8']],
+            'new_tag_card': ['void', [pduelPointer, 'uint32', 'uint8', 'uint8']],
+            'query_card': ['int32', [pduelPointer, 'uint8', 'uint8', 'int32', bytePointer, 'int32']],
+            'query_field_count': ['int32', [pduelPointer, 'uint8', 'uint8']],
+            'query_field_card': ['int32', [pduelPointer, 'uint8', 'uint8', 'int32', bytePointer, 'int32']],
+            'query_field_info': ['int32', [pduelPointer, bytePointer]],
+            'set_responsei': ['void', [pduelPointer, 'int32']],
+            'set_responseb': ['void', [pduelPointer, bytePointer]],
+            'preload_script': ['int32', [pduelPointer, charPointer, 'int32']]
+        });
+    ocgapi.set_script_reader(script_reader);
+    ocgapi.set_card_reader(card_reader);
+    ocgapi.set_message_handler(message_handler);
 
 
+    ocgapi.pduel = ocgapi.create_duel(0);
+    console.log('pDuel', pduel);
 };

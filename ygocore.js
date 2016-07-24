@@ -10,8 +10,7 @@ var sqlite3 = require('sqlite3').verbose(),
     os = require('os'),
     ffi = require('ffi'),
     ref = require('ref'),
-    struct = require('ref-struct'),
-    queryfor = require('./sql-queries');
+    struct = require('ref-struct');
 
 
 function constructDatabase(targetDB, targetFolder) {
@@ -27,11 +26,15 @@ function constructDatabase(targetDB, targetFolder) {
         cards[row.id] = row;
     }
 
-    database = new sqlite3.Database(targetDB, sqlite3.OPEN_READ);
-    database.on("open", console.log("database was opened successfully"));
-    database.on("close", console.log("database was closed successfully"));
-    database.each(queryfor.statistics, {}, handleQueryRow, function () {});
-    database.end();
+    database = new sqlite3.Database(targetDB);
+    database.on("open", function () {
+        console.log("database was opened successfully");
+    });
+    database.on("close", function () {
+        console.log("database was closed successfully");
+    });
+    //database.each(queryfor.statistics, {}, handleQueryRow, function () {}); // get all cards and load into memory.
+    //database.end();
 
     return function (request) {
         //function used by the core to process DB
@@ -85,34 +88,49 @@ function constructScripts(targetFolder) {
     };
 }
 
-module.exports.configurations = [{
-    card_reader: constructDatabase('../ygocore/card.cdb'),
-    script_reader: constructScripts('../ygocore/scripts/')
-}];
+module.exports.configurations = {
+    normal: {
+        card_reader: constructDatabase('./cards.cdb'),
+        script_reader: constructScripts('../YGOPro-Salvation-Server/http/ygopro/script')
+    }
+};
 
 
 module.exports.core = function (settings) {
     // create new instance of flourohydride/ygopro/ocgcore
 
-    this.ocgapi = ffi.Library(__dirname + '/ocgcore.dll', {
-        'set_script_reader': ['void', settings.script_reader],
-        'set_card_reader': ['void', settings.card_reader],
-        'set_message_handler': ['void', console.log],
+    var bytePointer = ref.types.byte,
+        charPointer = ref.types.char,
+        intPointer = ref.types.int,
+        uint32Pointer = ref.types.uint32,
+        voidPointer = ref.types.void,
+        cardDataPointer;
+
+    var script_reader = ffi.Function(bytePointer, [charPointer, intPointer]),
+        card_reader = ffi.Function('uint32', [cardDataPointer]),
+        message_handler = ffi.Function('uint32', [voidPointer, 'uint32']);
+
+    this.ocgapi = ffi.Library(__dirname + '/ocgcorex64.dll', {
+        'set_script_reader': ['void', [script_reader]],
+        'set_card_reader': ['void', [card_reader]],
+        'set_message_handler': ['void', message_handler],
         'create_duel': ['pointer', ['uint32']],
         'start_duel': ['void', ['pointer', 'int']],
         'end_duel': ['void', ['pointer']],
         'set_player_info': ['void', ['pointer', 'int32', 'int32', 'int32', 'int32']],
-        'get_log_message': ['void', ['pointer', 'byte*']],
-        'get_message': ['int32', ['pointer' /*, get_message_pointer*/ ]],
+        'get_log_message': ['void', ['pointer', bytePointer]],
+        //'get_message': ['int32', ['pointer', 'byte*']],
         'process': ['int32', ['pointer']],
         'new_card': ['void', ['pointer', 'uint32', 'uint8', 'uint8', 'uint8', 'uint8', 'uint8']],
         'new_tag_card': ['void', ['pointer', 'uint32', 'uint8', 'uint8']],
-        'query_card': ['int32', ['pointer', 'uint8', 'uint8', 'int32', 'byte*', 'int32']],
+        'query_card': ['int32', ['pointer', 'uint8', 'uint8', 'int32', bytePointer, 'int32']],
         'query_field_count': ['int32', ['pointer', 'uint8', 'uint8']],
-        'query_field_card': ['int32', ['pointer', 'uint8', 'uint8', 'int32', 'byte*', 'int32']],
-        'query_field_info': ['int32', ['pointer', 'byte*']],
+        'query_field_card': ['int32', ['pointer', 'uint8', 'uint8', 'int32', bytePointer, 'int32']],
+        'query_field_info': ['int32', ['pointer', bytePointer]],
         'set_responsei': ['void', ['pointer', 'int32']],
-        'set_responseb': ['void', ['pointer', 'byte*']],
-        'preload_script': ['int32', ['pointer', 'char*', 'int32']]
+        'set_responseb': ['void', ['pointer', bytePointer]],
+        'preload_script': ['int32', ['pointer', charPointer, 'int32']]
     });
+
+
 };

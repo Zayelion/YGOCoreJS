@@ -2,4 +2,12 @@
 var ocgwrapper = require('./ygocore.js');
 
 var conf = ocgwrapper.configurations.normal;
-ocgwrapper.core(conf);
+ocgwrapper.duel(conf, [{
+    main: [],
+    extra: [],
+    side: []
+}, {
+    main: [],
+    extra: [],
+    side: []
+}]);

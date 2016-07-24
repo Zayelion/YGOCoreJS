@@ -1,4 +1,4 @@
-/*jslint node:true */
+/*jslint node:true, plusplus:true */
 
 'use strict';
 
@@ -12,6 +12,10 @@ var sqlite3 = require('sqlite3').verbose(),
     ref = require('ref'),
     struct = require('ref-struct');
 
+
+var POS_FACEDOWN_DEFENSE = 0x8,
+    LOCATION_DECK = 0x01,
+    LOCATION_EXTRA = 0x40;
 
 var bytePointer = ref.refType(ref.types.byte),
     charPointer = ref.refType(ref.types.char),
@@ -102,12 +106,16 @@ function constructScripts(targetFolder) {
     });
 
     return function (id, length) {
+        id = id.toString('utf-8');
+        console.log('SCRIPT ID REQUEST:', id, 'Length:', length);
+        if (id === '.') {
+            return new Buffer([0]);
+        }
+        var filename = id,
+            output;
 
-        console.log('SCRIPT ID REQUEST:', id.toString('utf-8'), 'Length:', length);
-        return new Buffer([0]);
         //function used by the core to process scripts
-        var filename = 'c' + id.toString('utf-8'),
-            output = new Buffer(scripts[filename]);
+
         console.log('OUTPUT:', output);
         return output;
     };
@@ -116,7 +124,13 @@ function constructScripts(targetFolder) {
 module.exports.configurations = {
     normal: {
         card_reader: constructDatabase('./cards.cdb'),
-        script_reader: constructScripts('../YGOPro-Salvation-Server/http/ygopro/script')
+        script_reader: constructScripts('../YGOPro-Salvation-Server/http/ygopro/script'),
+        priority: false,
+        draw_count: 1,
+        start_hand_count: 5,
+        time: 300,
+        shuffleDeck: true,
+        start_lp: 8000
     }
 };
 
@@ -124,23 +138,7 @@ function messagHandler(input) {
     console.log('NEW MESSAGE', input);
 }
 
-function duel(instance, players) {
-    /*
-    1.) who is going first?
-    2.) if shuffle, shuffle decks
-    3.) set time limit
-    4.) set_script_reader
-    5.) set_card_reader
-    6.) set_message_handler
-    7.) create_duel(Random_Number)
-    8.) set_player_info(pduel, 0, start_lp, start_hand_count, draw_count);
-    9.) set_player_info(pduel, 1, start_lp, start_hand_count, draw_count);
-    
-
-    */
-}
-
-module.exports.core = function (settings) {
+function makeAPI(settings) {
     // create new instance of flourohydride/ygopro/ocgcore
 
     var pduelPointer = 'pointer', ///really need to figure out the dimensions of this pointer. "pointer" isnt gonna cut it.
@@ -168,11 +166,70 @@ module.exports.core = function (settings) {
             'set_responseb': ['void', [pduelPointer, bytePointer]],
             'preload_script': ['int32', [pduelPointer, charPointer, 'int32']]
         });
+
     ocgapi.set_script_reader(script_reader);
     ocgapi.set_card_reader(card_reader);
     ocgapi.set_message_handler(message_handler);
+    return ocgapi;
+}
 
+function shuffle(a) {
+    var j, x, i;
+    for (i = a.length; i; i--) {
+        j = Math.floor(Math.random() * i);
+        x = a[i - 1];
+        a[i - 1] = a[j];
+        a[j] = x;
+    }
+}
 
-    ocgapi.pduel = ocgapi.create_duel(0);
-    console.log('pDuel', pduel);
-};
+function seed() {
+    return Math.floor(Math.random() * (4294967295));
+}
+console.log(ref.types.uint32);
+
+function duel(settings, players) {
+    /*
+    1.) who is going first?
+    xx2.) if shuffle, shuffle decks
+    3.) set time limit
+    xx4.) set_script_reader
+    xx5.) set_card_reader
+    xx6.) set_message_handler
+    xx7.) create_duel(Random_Number)
+    xx8.) set_player_info(pduel, 0, start_lp, start_hand_count, draw_count);
+    xx9.) set_player_info(pduel, 1, start_lp, start_hand_count, draw_count);
+    xx10.) a.) new_card(pduel, pdeck[0].main[i]->first, 0, 0, LOCATION_DECK, 0, POS_FACEDOWN_DEFENSE);
+         b.) POS_FACEDOWN_DEFENSE is default
+    11.) send start message over message with LP and sizes (fuck that do it in JSON)
+    xx12.) start_duel(pduel, opt) where opt is if using goat age rules.
+    13.) "Process();"
+    */
+    var pduel,
+        game = makeAPI(settings);
+    if (settings.shuffleDeck) {
+        shuffle(players[0].main);
+        shuffle(players[0].extra);
+        shuffle(players[1].main);
+        shuffle(players[1].extra);
+    }
+    pduel = game.create_duel(seed());
+    game.set_player_info(pduel, 0, settings.start_lp, settings.start_hand_count, settings.draw_count);
+    game.set_player_info(pduel, 1, settings.start_lp, settings.start_hand_count, settings.draw_count);
+    players[0].main.forEach(function (cardID, sequence) {
+        game.new_card(pduel, cardID, 0, 0, LOCATION_DECK, 0, POS_FACEDOWN_DEFENSE);
+    });
+    players[0].extra.forEach(function (cardID, sequence) {
+        game.new_card(pduel, cardID, 0, 0, LOCATION_EXTRA, 0, POS_FACEDOWN_DEFENSE);
+    });
+    players[1].main.forEach(function (cardID, sequence) {
+        game.new_card(pduel, cardID, 0, 0, LOCATION_DECK, 0, POS_FACEDOWN_DEFENSE);
+    });
+    players[1].extra.forEach(function (cardID, sequence) {
+        game.new_card(pduel, cardID, 0, 0, LOCATION_EXTRA, 0, POS_FACEDOWN_DEFENSE);
+    });
+    //send start msg
+    game.start_duel(pduel, settings.priority);
+}
+
+module.exports.duel = duel;

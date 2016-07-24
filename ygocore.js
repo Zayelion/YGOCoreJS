@@ -10,7 +10,9 @@ var sqlite3 = require('sqlite3').verbose(),
     os = require('os'),
     ffi = require('ffi'),
     ref = require('ref'),
-    struct = require('ref-struct');
+    struct = require('ref-struct'),
+    arrayBuf = require('ref-array')
+
 
 
 var POS_FACEDOWN_DEFENSE = 0x8,
@@ -35,7 +37,8 @@ var bytePointer = ref.refType(ref.types.byte),
         lscale: ref.types.uint32,
         rscale: ref.types.uint32
     }),
-    cardDataPointer = ref.refType(cardData);
+    cardDataPointer = ref.refType(cardData),
+    charArray = arrayBuf(ref.types.char);
 
 
 function constructDatabase(targetDB, targetFolder) {
@@ -183,11 +186,19 @@ function shuffle(a) {
     }
 }
 
+function duelEndProcedure(players) {
+
+}
+
 function seed() {
     return Math.floor(Math.random() * (4294967295));
 }
 
-function mainProcess(game) {
+function Analyze() {
+
+}
+
+function mainProcess(game, players) {
     //    char engineBuffer[0x1000];
     //	unsigned int engFlag = 0, engLen = 0;
     //	int stop = 0;
@@ -205,7 +216,7 @@ function mainProcess(game) {
     //	if(stop == 2)
     //		DuelEndProc();
 
-    var engineBuffer,
+    var engineBuffer = charArray(0x1000),
         engFlag = 0,
         engLen = 0,
         stop = 0,
@@ -214,16 +225,16 @@ function mainProcess(game) {
         if (engFlag === 2) {
             break;
         }
-        result = process(game.pduel);
+        result = game.process(game.pduel);
         engLen = result & 0xffff;
         engFlag = result >> 16;
         if (engLen > 0) {
-            //game.get_message(game.pduel, (byte * ) & engineBuffer);
+            game.get_message(game.pduel, engineBuffer);
         }
         stop = Analyze(engineBuffer, engLen);
     }
     if (stop === 2) {
-        duelEndProcedure();
+        duelEndProcedure(players);
     }
 }
 
